@@ -86,6 +86,7 @@ export default function PromptForm({
             ref={inputRef}
             placeholder="Ask anything"
             onKeyDown={handleKeyDown}
+            className="p-4"
           />
           <InputGroupAddon align="block-end" className="flex justify-between">
             <DropdownMenu>

@@ -2,18 +2,20 @@
 
 import * as React from "react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
-import { BotIcon, UserIcon } from "lucide-react";
+import { AlertCircleIcon, BotIcon, UserIcon } from "lucide-react";
 import PromptForm from "@/components/chat/prompt-form";
-
+import {
+  ChatCompletionRequest,
+  ChatCompletionResponseSchema,
+} from "@/lib/types";
 import type {
   ChatCompletionMessageParam,
-  ChatCompletionAssistantMessageParam,
   ChatCompletionUserMessageParam,
 } from "openai/resources";
-import { OpenAIClient } from "@/lib/agent/openai";
 
 // Display metadata for UI purposes (fields not in OpenAI's type)
 interface MessageDisplayMeta {
@@ -26,9 +28,6 @@ interface MessageDisplayMeta {
 
 // Wrapper types that extend OpenAI's types with display metadata
 type DisplayMessage = ChatCompletionMessageParam & MessageDisplayMeta;
-type DisplayAssistantMessage = ChatCompletionAssistantMessageParam &
-  MessageDisplayMeta;
-type DisplayUserMessage = ChatCompletionUserMessageParam & MessageDisplayMeta;
 
 // Factory to create display messages with auto-generated metadata
 function NewDisplayMessage<T extends ChatCompletionMessageParam>(
@@ -45,10 +44,11 @@ export default function ChatPage() {
   const [messages, setMessages] = React.useState<DisplayMessage[]>([
     NewDisplayMessage({
       role: "assistant",
-      content: "Hi! How can I help you today?",
+      content: "You are a helpful assistant...",
     }),
   ]);
-  const [isLoading, setIsLoading] = React.useState(false);
+  const [loading, setLoading] = React.useState(false);
+  const [error, setError] = React.useState<string | null>(null);
   const scrollRef = React.useRef<HTMLDivElement>(null);
 
   const scrollToBottom = () => {
@@ -62,26 +62,55 @@ export default function ChatPage() {
   }, [messages]);
 
   const handleSend = async (input: string) => {
-    if (!input.trim() || isLoading) return;
+    if (!input.trim() || loading) return;
 
     const message = NewDisplayMessage<ChatCompletionUserMessageParam>({
       role: "user",
       content: input,
     });
 
-    setIsLoading(true);
+    setLoading(true);
+    setError(null);
+    setMessages((prev) => [...prev, message]);
 
     console.log("waiting for response...");
-    const response = await OpenAIClient.chat.completions.create({
-      model: "kimi-k2.5",
-      messages: [message],
-    });
+    const request: ChatCompletionRequest = {
+      input: [
+        ...messages.map((msg): ChatCompletionMessageParam => {
+          const { ...params } = msg;
+          return params;
+        }),
+        message,
+      ],
+    };
+    try {
+      const response = await fetch("/api/chat/completions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(request),
+      });
+      const data = ChatCompletionResponseSchema.parse(await response.json());
+      if (!data.response || !data.success) {
+        throw Error(`failed to receive from provider: ${data.message}`);
+      }
+      const choice = data.response?.choices[0];
 
-    setMessages((prev) => [
-      ...prev,
-      message,
-      NewDisplayMessage(response.choices[0].message),
-    ]);
+      setMessages((prev) => [
+        ...prev,
+        NewDisplayMessage({
+          role: choice.message.role,
+          content: choice.message.content,
+        }),
+      ]);
+    } catch (err) {
+      if (err instanceof Error) {
+        setError(err.message);
+      } else {
+        setError(`unknown error: ${err}`);
+      }
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -99,7 +128,7 @@ export default function ChatPage() {
               {messages.map((message) => (
                 <ChatMessage key={message.id} message={message} />
               ))}
-              {isLoading && (
+              {loading && (
                 <div className="flex items-start gap-3">
                   <Avatar size="sm">
                     <AvatarFallback>
@@ -114,6 +143,12 @@ export default function ChatPage() {
                     </div>
                   </div>
                 </div>
+              )}
+              {error && (
+                <Alert variant="destructive">
+                  <AlertCircleIcon className="size-4" />
+                  <AlertDescription>{error}</AlertDescription>
+                </Alert>
               )}
               <div ref={scrollRef} />
             </div>
@@ -157,9 +192,9 @@ function ChatMessage({ message }: { message: DisplayMessage }) {
       <Avatar size="sm">
         <AvatarFallback>
           {asstMessage ? (
-            <BotIcon className="size-3" />
+            <BotIcon className="size-6" />
           ) : (
-            <UserIcon className="size-3" />
+            <UserIcon className="size-6" />
           )}
         </AvatarFallback>
       </Avatar>

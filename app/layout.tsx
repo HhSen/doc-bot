@@ -1,8 +1,10 @@
 import type { Metadata } from "next";
 import { Inter } from "next/font/google";
+import { Agentation } from "agentation";
+
 import "./globals.css";
 
-const fontSans = Inter({subsets:['latin'],variable:'--font-sans'});
+const fontSans = Inter({ subsets: ["latin"], variable: "--font-sans" });
 
 export const metadata: Metadata = {
   title: "Create Next App",
@@ -16,11 +18,8 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" className={fontSans.variable}>
-      <body
-        className="antialiased"
-      >
-        {children}
-      </body>
+      <body className="antialiased">{children}</body>
+      <Agentation />
     </html>
   );
 }
